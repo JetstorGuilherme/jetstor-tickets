@@ -1,37 +1,33 @@
-const fetch = require('node-fetch');
-
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   try {
-    // 1. Verificar autenticação
-    const userToken = req.headers.authorization?.split(' ')[1];
-    if (!userToken) return res.status(401).json({ error: 'Não autorizado' });
+    // 1. Validar parâmetros
+    const userUid = req.query.uid;
+    if (!userUid) return res.status(400).json({ error: 'UID do usuário não fornecido' });
 
-    // 2. Buscar usuário na Outseta
-    const userResponse = await fetch('https://jetstor.outseta.com/api/v1/auth/currentuser', {
-      headers: { Authorization: `Bearer ${userToken}` }
-    });
+    // 2. Configurar autenticação
+    const authString = Buffer.from(`${process.env.OUTSETA_API_KEY}:`).toString('base64');
     
-    if (!userResponse.ok) throw new Error('Token inválido');
-    
-    const user = await userResponse.json();
-
     // 3. Buscar tickets
-    const ticketsResponse = await fetch(
-      `https://jetstor.outseta.com/api/v1/support/cases?FromPerson.Uid=${user.Uid}`,
+    const response = await fetch(
+      `https://${process.env.OUTSETA_SUBDOMAIN}.outseta.com/api/v1/support/cases?FromPerson.Uid=${userUid}`,
       {
         headers: {
-          Authorization: `Bearer ${process.env.OUTSETA_API_KEY}`,
+          'Authorization': `Basic ${authString}`,
           'Content-Type': 'application/json'
         }
       }
     );
 
-    // 4. Retornar resposta
-    const tickets = await ticketsResponse.json();
-    res.json(tickets);
+    if (!response.ok) throw new Error(`Erro ${response.status}: ${response.statusText}`);
+    
+    const data = await response.json();
+    res.status(200).json(data);
 
   } catch (error) {
-    console.error('Erro:', error);
-    res.status(500).json({ error: error.message || 'Erro interno' });
+    console.error('Erro na API:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
-};
+}
